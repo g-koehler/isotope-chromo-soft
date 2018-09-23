@@ -1,0 +1,5 @@
+#d13C and ppm values for lgr CO2 spectrometer
+-3.07	77815
+-3.96	118034
+-4.50	162432
+-5.33	205320

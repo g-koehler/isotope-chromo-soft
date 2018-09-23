@@ -1,0 +1,190 @@
+/*	LGR data processor that finds peaks in water 
+      	integrates the peaks and spits out the data -	input is a simplified LGR data file 		
+	recuded with the shellscript "peak_reduce"
+	Arguments are the input file name and threshold value
+	outputs to stdout
+	A workable C program from the perl script
+	G. Koehler 2011
+*/
+
+
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/ioctl.h>
+#include <math.h>
+#include <getopt.h>
+
+#include "dh.h"  
+
+#define PERCENT 10
+#define REFD = -135
+#define REFO = -16.9
+#define SAMPLERATE  2        /*hz*/
+
+/* default integration threshold */
+
+
+int main(int argc, char *argv[])
+{
+	
+    int threshold = THRESHOLD, smooth = FALSE, c, peakno=0, cntr=0, j, i=0, foundpeak = FALSE;
+    int boxcar = 5, k=0, peakstart, peakend, ref=FALSE, liq_water = FALSE;
+    float peak_array_d[1000], peak_array_18o[1000], peak_array_h2o[1000], h2osum = 0.0;
+    float dh, o18o16, deltaD, delta18o, percent = 0.0, dref = 0.0, oref = 0.0;
+    float dexcess, dh_ref = 0.000282, o18o16_ref = 0.001982;  /* give refs reasonable ref values */
+    float temp = 25.0;
+    char *inputfile = NULL;
+
+   while (( c=getopt(argc, argv, "b:f:t:p:d:o:srwT:")) != -1)
+		switch (c) {
+			case 't':
+				threshold = atoi(optarg);				
+				break;
+
+			case 'p':
+				percent = atof(optarg);				
+				break;
+
+			case 'd':
+				dref = atof(optarg);				
+				break;
+			case 'o':
+				oref = atof(optarg);				
+				break;
+
+			case 's':
+				smooth = TRUE;				
+				break;
+
+			case 'b':
+				boxcar = atoi(optarg);
+				break;
+
+			case 'f':
+				inputfile = optarg;
+				break;
+
+			case 'r':
+				ref = TRUE;
+				break;
+
+			case 'w':
+				liq_water = TRUE;
+				break;	
+			case 'T':
+				temp = atof(optarg) + 273.0;
+				break;				
+			default:
+				break;
+		}
+/*
+    if (argc < 3)
+        percent = PERCENT;
+    else
+        percent = atof(argv[2]);
+*/	
+    if (readfile(inputfile) != 0){ /*read the filename */
+    		fprintf(stderr, "main:  unable to read input file\n");
+		exit(-1);
+	}		
+	
+	remove_d_noise(d, mainarraysize); /* removes any negative or giant values */
+    
+	/* dumparray(d, mainarraysize); */
+
+	printf("#****************************************\n");
+	printf("#      PROGRAM:  %s\n", argv[0]);
+	printf("#      FILE: %s*\n", inputfile);
+	printf("#****************************************\n");
+	printf("# Threshold = %d\n", threshold);
+	printf("# baseline = %f percent\n", percent);
+	printf("# DeltaD reference =  %f   ", dref);
+	printf("# Delta18O reference =  %f\n", oref);
+	if (smooth == TRUE) {
+		printf("# Smoothing on\n");
+		printf("# boxcar size = %d\n", boxcar);
+	}
+	if (liq_water == TRUE) {
+	    printf("# values reported as water in equilibrium with vapour, temp = %f\n", temp);
+	 }
+	printf("#\n#\n#Peak  time(s)  samples    size	   D/H	     18O/16O	  DeltaD    Delta18O\n");
+	printf("#------------------------------------------------------------------------------\n");
+
+	
+    for (i = 0; i < mainarraysize; i++) {
+        
+        if (h2o[i] > threshold) {  /*found a peak */
+            foundpeak = TRUE; 
+	    peakstart = i;
+            while (h2o[peakstart + k] > threshold) k++;
+	    peakend = peakstart+k; 
+	    
+	    k=0; /* reset k */
+	    
+	    for (cntr = 0; cntr < (peakend - peakstart) + 40; cntr++) {
+	    	peak_array_h2o[cntr]=h2o[peakstart -20 + cntr];
+            	peak_array_18o[cntr]=o18[peakstart -20 + cntr];  /*fill up peak arrays */
+		dexcess = 2.28e-10*h2o[peakstart -20 + cntr]*h2o[peakstart -20 + cntr];
+            	peak_array_d[cntr] = d[peakstart -20 + cntr] + dexcess; /*0.0001*h2o[peakstart -10 + cntr];*/
+	    }
+	    i=peakend;
+        }   
+            
+        
+        else if (foundpeak == TRUE) {
+            peakno++;
+
+	    if (smooth == TRUE) {
+	       	boxcar_smooth(peak_array_h2o, cntr, 5);
+		boxcar_smooth(peak_array_18o, cntr, 5);
+		boxcar_smooth(peak_array_d, cntr, 5);
+
+	    }
+	    
+	    
+
+            h2osum = getsum(peak_array_h2o, cntr, percent);
+            dh = getsum(peak_array_d, cntr, percent) /h2osum;
+	    o18o16 = getsum(peak_array_18o, cntr, percent) / h2osum;
+
+	    if (liq_water == TRUE && peakno != 1) {
+		dh = get_dh_w(dh, temp); /* calculate liquid water in eq */
+		o18o16 = get_1816_w(o18o16, temp);
+	    }
+
+            
+
+	    if (ref == TRUE && peakno == 1 ) { /* big peak - its the ref */
+                dh_ref = dh;
+                o18o16_ref = o18o16;         
+            } 
+            
+            /* Otherwise its a sample, but should calculate delta value of sample vs ref anyway */
+            
+            deltaD = ((dh/dh_ref)-1.0)*1000 + dref;
+            delta18o = ((o18o16/o18o16_ref)-1.0)*1000 + oref;
+            
+            printf("%6d %6d %6d %10.2e %10f %10f %10.1f %10.2f\n",
+                   peakno, peakstart/SAMPLERATE, cntr, h2osum, dh, o18o16, deltaD, delta18o);
+
+	    /* set peak arrays to 0 */
+            for (j = 0; j<1000; j++) {
+		    peak_array_h2o[j]= 0;
+	            peak_array_18o[j]= 0;
+		    peak_array_d[j] = 0;
+	    }
+		
+            foundpeak = FALSE;
+            
+          } 
+            else {/*do nothing*/}
+            
+        
+                                 
+        
+    }
+    
+   	printf("#------------------------------------------------------------------------------\n");
+	
+	return 0;	
+}

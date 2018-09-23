@@ -1,0 +1,51 @@
+/*  Integrate.c
+
+ A peak integration routine.  Uses trapazoidal rule to integrate data in a floating point
+ array
+
+ */
+
+float integrate(float *array, int arraysize, float baseline)
+{
+	float temp[2], max, total = 0.0, baseline;
+	int j;
+    
+    max = array_max(array, arraysize);
+	
+	baseline = max * (percent/100.0);
+
+	for (i=0; i< arraysize; i++) {
+
+		if (array[i] < baseline {}
+
+		else {
+		
+			for (j = 0; j < 2; j++) {
+
+				temp[j] = array[i+j]-baseline;
+
+			}
+
+			total += temp[0] + ((temp[1]-temp[0])/2);
+
+		}
+
+	 }
+
+
+
+
+
+
+	}
+
+
+
+
+
+
+
+
+
+
+}

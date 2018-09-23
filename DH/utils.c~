@@ -1,0 +1,171 @@
+/*  	various utility functions  
+	G.  Koehler
+	
+	Apr 2011
+	
+*/
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+/* #include "dh.h" */
+
+
+#define PI 	3.141592
+
+
+/*  finds the minimum value in the passed 1D array */
+
+float array_max(float *array, int arraysize)
+{
+	float maximum = 0.;
+	int i;
+	
+	maximum = *array; /* set maximum to first element in array */
+	
+	for (i=0; i<arraysize; i++) {
+		if (array[i] > maximum) 
+			maximum = array[i];
+	}
+	
+	return maximum;
+}
+
+
+
+/*  
+*	boxcar smoothing of 1D array
+*/  
+
+int boxcar_smooth(float *array, int arraysize, int boxcarsize)
+{
+	float *tempbuffer, total;
+	int i, j;
+	
+	tempbuffer = (float *)malloc(arraysize * sizeof(float));
+	
+	if (tempbuffer == NULL) {
+		perror("out of memory - malloc failed");
+		exit(1);
+	}
+	
+	/*  fill temp array with smoothed values  */
+	for (i=0; i<arraysize; i++) {
+		
+		if (i < boxcarsize || (arraysize -i) < boxcarsize)
+			
+			tempbuffer[i] = array[i];
+		
+		else {
+			total = 0.;
+			
+			for(j=0; j<boxcarsize; j++) 
+				total += array[ i + (j-boxcarsize/2)];
+			
+			tempbuffer[i] = total/boxcarsize;
+		}
+	}
+	
+	/*  fill contents of array with smoothed values */
+	
+	for (i=0; i< arraysize; i++)
+		array[i] = tempbuffer[i];
+		
+	free(tempbuffer);
+	
+	return 0;
+}
+			
+/*  baseline normalize 1D array   */
+
+int baseline_norm(float *array, int arraysize, float percent)
+{
+	float maximum;
+	int i;
+	
+	
+	/*  get minimum value from array  */
+	
+	maximum = array_max(array, arraysize);
+	
+	
+	
+	/*  fill contents of array with normalized values values */
+	
+	for (i=0; i< arraysize; i++)
+		array[i] = array[i] - maximum * percent/100;
+		
+	return 0; /*success */
+}
+		
+/*  get sum of array above baseline in percent */
+
+float getsum(float *array, int arraysize, float percent)
+{
+	float max, total = 0.0;
+	int j;
+    
+    max = array_max(array, arraysize);
+	
+	
+	
+    for(j=0; j<arraysize; j++) {
+        if (array[j] > (max * (percent/100.0)))
+            total += array[j];
+    }
+			
+			
+	
+	return total;
+}
+
+
+/* dump contents of array to stdout */
+int dumparray(float *array, int arraysize)
+{
+	int i;
+	for (i=0; i < arraysize; i++)
+		printf("%lf\n", array[i]);
+		
+	return 0;
+}
+
+/*Removes any negative values in the HOD array.  These values are noise in the spectrometer and really 
+  screws up delta values if one gets through */	
+
+int remove_d_noise(float *array, int arraysize) 
+{
+	int i;
+	for (i=0; i < arraysize; i++) {
+		if (array[i] < 0) array[i] = 0.1;
+		if (array[i] > 100) array[i] = 60.0;
+	}	
+	return 0;
+}
+
+/*Calculates hydrogen isotopic compsotion of water in eq with vapour given the D/H of vapour
+	and the temperature.  Uses majuobe to calculate equilibrium fractionation factors*/
+
+float get_dh_w(float dh, float t)
+{
+	
+	float alpha =  exp((24844/(t*t)) - (76.248/t) + 0.052612);
+	/*printf("alpha = %f\n", alpha); */
+	return alpha * dh;
+
+
+}
+/*Calculates hydrogen isotopic compsotion of water in eq with vapour given the D/H of vapour
+	and the temperature.  Uses majuobe to calculate equilibrium fractionation factors*/
+
+float get_1816_w(float o18o16, float t)
+{
+	
+	float alpha =  exp((1137/(t*t)) - (0.4156/t) + 0.0020667);
+	/*printf("alpha = %f\n", alpha); */
+	return alpha * o18o16;
+
+
+}
